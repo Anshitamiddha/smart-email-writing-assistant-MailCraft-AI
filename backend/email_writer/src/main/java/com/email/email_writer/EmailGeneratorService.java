@@ -26,12 +26,9 @@ public class EmailGeneratorService {
 
     public String generateEmailReply(EmailRequest emailRequest) {
 
-        // build prompt
         String prompt = buildPrompt(emailRequest);
 
-        // build the request body as a real object graph instead of a hand-formatted
-        // string, so special characters (quotes, newlines, %) in the email content
-        // can't break the JSON. The Interactions API takes "input" as a plain string.
+        // using a Map instead of a raw string so special characters don't break the JSON
         Map<String, Object> requestBody = Map.of(
                 "model", "gemini-3.6-flash",
                 "input", prompt
@@ -47,13 +44,13 @@ public class EmailGeneratorService {
                     .bodyValue(jsonMapper.writeValueAsString(requestBody))
                     .retrieve()
                     .bodyToMono(String.class)
-                    .timeout(Duration.ofSeconds(30))
+                    .timeout(Duration.ofSeconds(30)) // avoid hanging forever
                     .block();
 
             return extractResponseContent(response);
 
         } catch (WebClientResponseException e) {
-            // surface Google's actual error instead of failing silently with a 500
+            // include Gemini's actual error message instead of a generic failure
             throw new RuntimeException(
                     "Gemini API call failed with status " + e.getStatusCode()
                             + ": " + e.getResponseBodyAsString(), e);
@@ -62,12 +59,9 @@ public class EmailGeneratorService {
 
     private String extractResponseContent(String response) {
         JsonNode root = jsonMapper.readTree(response);
-
-        // Interactions API response shape:
-        // { "steps": [ { "type": "thought", ... }, { "type": "model_output", "content": [ { "type": "text", "text": "..." } ] } ] }
-        // "steps[0]" is not guaranteed to be the answer - a "thought" step can come
-        // first - so find the "model_output" step explicitly.
         JsonNode steps = root.path("steps");
+
+        // find the model_output step (it's not always first)
         for (JsonNode step : steps) {
             if ("model_output".equals(step.path("type").asString(""))) {
                 JsonNode content = step.path("content");
