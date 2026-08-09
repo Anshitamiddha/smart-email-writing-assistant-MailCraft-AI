@@ -1,0 +1,1 @@
+console.log("Email Assistant is running");
